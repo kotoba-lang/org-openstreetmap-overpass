@@ -29,11 +29,12 @@
   "QL 文字列 → parse 済み応答の Promise。`{:endpoint :user-agent
   :min-interval-ms :retry?}`。"
   ([ql-string] (post-ql ql-string {}))
-  ([ql-string {:keys [endpoint user-agent min-interval-ms retry?]
+  ([ql-string {:keys [endpoint user-agent min-interval-ms retry? parse-opts]
                :or {endpoint core/default-endpoint
                     user-agent default-user-agent
                     min-interval-ms 1200
-                    retry? true}}]
+                    retry? true
+                    parse-opts {}}}]
    (-> (throttle! min-interval-ms)
        (.then (fn [_]
                 (js/fetch endpoint
@@ -44,13 +45,14 @@
        (.then (fn [res]
                 (cond
                   (.-ok res)
-                  (.then (.json res) (fn [j] (core/parse-response (js->clj j))))
+                  (.then (.json res) (fn [j] (core/parse-response (js->clj j) parse-opts)))
 
                   (and retry? (#{429 502 503 504} (.-status res)))
                   (.then (sleep 5000)
                          (fn [_] (post-ql ql-string {:endpoint endpoint
                                                      :user-agent user-agent
                                                      :min-interval-ms min-interval-ms
+                                                     :parse-opts parse-opts
                                                      :retry? false})))
 
                   :else
@@ -58,7 +60,19 @@
                                   {:status (.-status res) :endpoint endpoint})))))) ))
 
 (defn fetch-poles
-  "bbox → 観測。`core/ql` を通すので選択子の正しさはテスト済みの経路を通る。"
+  "bbox → 電柱の観測。`core/ql` を通すので選択子の正しさはテスト済みの経路を通る。"
   ([bbox] (fetch-poles bbox {}))
   ([bbox opts]
    (post-ql (core/ql bbox (select-keys opts [:kinds :timeout])) opts)))
+
+(defn fetch-features
+  "bbox + 任意の選択子 → 観測。屋外広告物の媒体を引くときはこちら
+  （`okugai.medium/osm-selectors` と `osm-tags->medium` を渡す）。
+
+     (fetch-features bbox {:selectors (medium/osm-selectors ids)
+                           :ways? true
+                           :parse-opts {:classify medium/osm-tags->medium
+                                        :attr :obs/medium}})"
+  ([bbox] (fetch-features bbox {}))
+  ([bbox opts]
+   (post-ql (core/ql bbox (select-keys opts [:selectors :kinds :timeout :ways?])) opts)))

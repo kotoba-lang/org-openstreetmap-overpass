@@ -49,21 +49,33 @@
        (<= -180 west 180) (<= -180 east 180)))
 
 (defn ql
-  "bbox + kind 列 → Overpass QL。`out:json` 固定、`timeout` は明示。
-  node だけを引く（柱は node としてマッピングされる）。"
+  "bbox + 選択子 → Overpass QL。`out:json` 固定、`timeout` は明示。
+
+  **選択子は呼び出し側が渡す。** タクソノミーはこの repo の持ち物ではない
+  （屋外広告物の媒体分類は `kotoba-lang/okugai` が正本で、そちらの
+  `okugai.medium/osm-selectors` が `[[tag value] ...]` を返す）。`:kinds` は
+  電柱だけを引きたい呼び出し側のための短縮形。
+
+  `:ways?` を立てると way も引く —— 壁面広告や大型看板は way として
+  マッピングされることがある（node だけだと取りこぼす）。"
   ([bbox] (ql bbox {}))
-  ([bbox {:keys [kinds timeout] :or {kinds default-kinds timeout 60}}]
+  ([bbox {:keys [kinds selectors timeout ways?]
+          :or {kinds default-kinds timeout 60}}]
    (when-not (valid-bbox? bbox)
      (throw (ex-info "invalid bbox" {:bbox bbox})))
    (let [b (bbox-str bbox)
-         clauses (for [k kinds
-                       [tag v] (get pole-selectors k)]
-                   (str "  node[\"" tag "\"=\"" v "\"](" b ");"))]
+         sels (or (seq selectors)
+                  (seq (for [k kinds, sel (get pole-selectors k)] sel)))
+         clauses (concat
+                  (for [[tag v] sels] (str "  node[\"" tag "\"=\"" v "\"](" b ");"))
+                  (when ways?
+                    (for [[tag v] sels] (str "  way[\"" tag "\"=\"" v "\"](" b ");"))))]
      (when (empty? clauses)
-       (throw (ex-info "no selectors for kinds" {:kinds kinds})))
+       (throw (ex-info "no selectors" {:kinds kinds :selectors selectors})))
      (str "[out:json][timeout:" timeout "];\n"
           "(\n" (str/join "\n" clauses) "\n);\n"
-          "out body;\n"))))
+          ;; way も引く場合は中心座標が要る（out center は node には無害）
+          (if ways? "out center tags;\n" "out body;\n")))))
 
 (defn tags->kind
   "タグ map → kind。どの選択子で引かれたかではなく**タグそのもの**から
@@ -77,34 +89,47 @@
     :else nil))
 
 (defn element->observation
-  "Overpass の element → `denchu.pole` が受け取る観測。分類できない element は
-  `nil`（呼び出し側が数える）。座標が無い element も `nil`。"
-  [{:strs [type id lat lon tags] :as _el}]
-  (let [tags (or tags {})
-        kind (tags->kind tags)]
-    (when (and kind (number? lat) (number? lon) (= "node" type))
-      {:obs/source :osm
-       :obs/source-id (str "node/" id)
-       :obs/lat lat
-       :obs/lon lon
-       :obs/kind kind
-       :obs/tags tags
-       :obs/evidence-url (str "https://www.openstreetmap.org/node/" id)})))
+  "Overpass の element → 観測。`classify` は tags → 分類キーワードの関数で、
+  既定は電柱用の `tags->kind`。**分類器は呼び出し側が渡す** —— 屋外広告物の
+  媒体分類は `okugai.medium/osm-tags->medium`。
+
+  `attr` は分類結果を載せるキー（既定 `:obs/kind`、okugai 経路では
+  `:obs/medium`）。分類できない element と座標の無い element は `nil`。
+  way は `out center` の `center` から座標を取る。"
+  ([el] (element->observation el {}))
+  ([{:strs [type id lat lon tags center] :as _el}
+    {:keys [classify attr] :or {classify tags->kind attr :obs/kind}}]
+   (let [tags (or tags {})
+         k (classify tags)
+         [la lo] (cond (and (number? lat) (number? lon)) [lat lon]
+                       (map? center) [(get center "lat") (get center "lon")]
+                       :else [nil nil])]
+     (when (and k (number? la) (number? lo) (#{"node" "way"} type))
+       {:obs/source :osm
+        :obs/source-id (str type "/" id)
+        :obs/lat la
+        :obs/lon lo
+        attr k
+        :obs/tags tags
+        :obs/evidence-url (str "https://www.openstreetmap.org/" type "/" id)}))))
 
 (defn parse-response
   "Overpass の JSON（keyword 化していない string キーの map）→
   `{:observations [...] :unclassified n :raw-count n}`。
 
   分類できなかった element を**黙って落とさず数える** — 落ちた数が見えないと
-  『この地域には柱が無い』と『この地域の柱を読めなかった』が区別できない。"
-  [json]
+  『この地域には対象が無い』と『この地域の対象を読めなかった』が区別できない。
+
+  `opts` は `element->observation` にそのまま渡る（`:classify` / `:attr`）。"
+  ([json] (parse-response json {}))
+  ([json opts]
   (let [els (get json "elements" [])
-        obs (keep element->observation els)]
+        obs (keep #(element->observation % opts) els)]
     {:observations (vec obs)
      :raw-count (count els)
      :unclassified (- (count els) (count obs))
      :generator (get json "generator")
-     :osm3s (get json "osm3s")}))
+     :osm3s (get json "osm3s")})))
 
 (defn observations-with-operator
   "`operator` タグを持つ観測だけ。所有者を確定できる割合を測るために使う

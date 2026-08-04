@@ -67,3 +67,48 @@
     (is (= 1 (:with-operator c)))
     (is (= 1 (:without-operator c)))
     (is (= 0.5 (:ratio c)))))
+
+;; ── 一般化（任意の選択子 + 呼び出し側の分類器） ─────────────────────
+
+(deftest selectors-are-supplied-by-the-caller
+  (let [q (ov/ql tokyo {:selectors [["advertising" "billboard"] ["advertising" "board"]]})]
+    (is (str/includes? q "node[\"advertising\"=\"billboard\"]"))
+    (is (str/includes? q "node[\"advertising\"=\"board\"]"))
+    (testing "呼び出し側が選択子を渡したら電柱の既定は混ざらない"
+      (is (not (str/includes? q "power"))))))
+
+(deftest ways-are-opt-in-and-need-center
+  (let [q (ov/ql tokyo {:selectors [["advertising" "billboard"]] :ways? true})]
+    (is (str/includes? q "way[\"advertising\"=\"billboard\"]"))
+    (is (str/includes? q "out center tags;")))
+  (testing "既定は node だけ"
+    (is (str/includes? (ov/ql tokyo {:selectors [["advertising" "billboard"]]}) "out body;"))))
+
+(def advertising-response
+  {"elements"
+   [{"type" "node" "id" 1 "lat" 35.68 "lon" 139.77
+     "tags" {"advertising" "billboard" "operator" "株式会社アトレ"}}
+    {"type" "way" "id" 2 "center" {"lat" 35.681 "lon" 139.771}
+     "tags" {"advertising" "board"}}
+    {"type" "node" "id" 3 "lat" 35.682 "lon" 139.772 "tags" {"amenity" "bench"}}]})
+
+(deftest classifier-and-attr-are-injectable
+  (let [classify (fn [tags] (case (get tags "advertising")
+                              "billboard" :billboard
+                              "board" :board
+                              nil))
+        {:keys [observations unclassified]}
+        (ov/parse-response advertising-response {:classify classify :attr :obs/medium})]
+    (is (= 2 (count observations)))
+    (is (= 1 unclassified))
+    (is (= [:billboard :board] (mapv :obs/medium observations)))
+    (testing "way は out center の座標を使い、id に type が入る"
+      (is (= "way/2" (:obs/source-id (second observations))))
+      (is (= 35.681 (:obs/lat (second observations))))
+      (is (= "https://www.openstreetmap.org/way/2" (:obs/evidence-url (second observations)))))))
+
+(deftest pole-path-still-works-unchanged
+  (let [{:keys [observations]} (ov/parse-response sample-response)]
+    (is (= 2 (count observations)))
+    (is (= :utility-pole (:obs/kind (first observations))))
+    (is (= "node/1234" (:obs/source-id (first observations))))))
