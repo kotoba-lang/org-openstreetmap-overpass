@@ -1,0 +1,4 @@
+;; org-openstreetmap-overpass — pure .cljc core + nbb fetch adapter, no deps.
+{:paths ["src"]
+ :deps {}
+ :aliases {:test {:extra-paths ["test"]}}}
