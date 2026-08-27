@@ -41,6 +41,25 @@ OSM だから。Mapillary の画像検出（`com-mapillary-graph-api`）は acce
 (-> (f/fetch-poles bbox) (.then (fn [r] (count (:observations r)))))
 ```
 
+## 選択子は 3 形。値が数百ある key はキー存在で引く
+
+```clojure
+(ov/ql bbox {:selectors [["shop"]                                ; キーが在るだけ
+                         ["amenity" {:any-of ["cafe" "bar"]}]     ; 値の集合
+                         ["power" "pole"]]                        ; 値が決まっている
+             :nwr? true})                                         ; node+way+relation を 1 節で
+```
+
+`shop` は OSM で 500 以上の値を持つ。値ごとに節を並べるとクエリが数百行になり、
+共有インフラに対して無作法で、しかも**表に無い新しい値が黙って取りこぼされる** ——
+キー存在形なら取れて、分類器が `nil` を返し `:unclassified` として数に出る。
+
+`:any-of` は `^(...)$` で囲う（囲わないと `cafe` が `cafeteria` に当たる）。
+選択子の値に `"` が入ると節が閉じるので、エスケープせず**拒否する**。
+
+`element->observation` の `:types` は既定で node / way / relation。relation を
+除いていた頃は `:unclassified` にも入らない形で落ちていた —— 落とすなら数えられる形で。
+
 送電鉄塔（`power=tower`）は電柱ではないので既定では引かない。街路灯
 （`highway=street_lamp`）は誤マッピング調査のため `:kinds` で明示した時だけ引く。
 

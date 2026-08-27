@@ -112,3 +112,33 @@
     (is (= 2 (count observations)))
     (is (= :utility-pole (:obs/kind (first observations))))
     (is (= "node/1234" (:obs/source-id (first observations))))))
+
+;; ── 選択子の 3 形と nwr（事業者の収集で足した面）─────────────────────────
+
+(deftest selector-key-only-form
+  (testing "値を持たない選択子はキー存在で引く（shop は値が 500 以上ある）"
+    (let [q (ov/ql tokyo {:selectors [["shop"]] :nwr? true})]
+      (is (str/includes? q "nwr[\"shop\"](35.68,"))
+      (is (not (str/includes? q "="))))))
+
+(deftest selector-any-of-is-anchored
+  (testing "^(...)$ で囲む —— 囲わないと cafe が cafeteria にも当たる"
+    (let [q (ov/ql tokyo {:selectors [["amenity" {:any-of ["cafe" "bar"]}]] :nwr? true})]
+      (is (str/includes? q "nwr[\"amenity\"~\"^(cafe|bar)$\"]")))))
+
+(deftest nwr-emits-one-clause-per-selector-and-center-output
+  (let [q (ov/ql tokyo {:selectors [["shop"] ["office"]] :nwr? true})]
+    (is (= 2 (count (re-seq #"nwr\[" q))))
+    (is (str/includes? q "out center tags;"))))
+
+(deftest quote-in-a-selector-value-is-refused
+  (testing "引用符は節を閉じる。通す実装ではなく拒否する"
+    (is (thrown? #?(:clj Exception :cljs js/Error)
+                 (ov/ql tokyo {:selectors [["name" "a\"b"]] :nwr? true})))))
+
+(deftest relation-elements-are-not-silently-dropped
+  (let [rel {"type" "relation" "id" 77 "center" {"lat" 35.681 "lon" 139.767}
+             "tags" {"power" "pole"}}]
+    (is (some? (ov/element->observation rel)))
+    (testing ":types を絞れば落ちるが、それは呼び出し側の宣言"
+      (is (nil? (ov/element->observation rel {:types #{"node"}}))))))
