@@ -48,34 +48,77 @@
        (<= -90 south 90) (<= -90 north 90)
        (<= -180 west 180) (<= -180 east 180)))
 
+(defn- quote-escape
+  "Overpass QL の値は二重引用符で囲む。値に `\"` が入ると節が閉じるので落とす
+  （エスケープして通すのではなく **拒否する** —— タグ値に引用符が要る検索は
+  この repo が今日まで一度も要求されておらず、通す実装は検査の無い経路になる）。"
+  [v]
+  (let [v (str v)]
+    (when (str/includes? v "\"")
+      (throw (ex-info "quote in selector value" {:value v})))
+    v))
+
+(defn selector->clause
+  "選択子 1 つ → Overpass QL の 1 節。**3 つの形を取る**:
+
+    [\"power\" \"pole\"]                 [\"power\"=\"pole\"]      値が決まっている
+    [\"shop\"]                          [\"shop\"]              **キーが在るだけでよい**
+    [\"amenity\" {:any-of [\"cafe\" \"bar\"]}]  [\"amenity\"~\"^(cafe|bar)$\"]  値の集合
+
+  キー存在形と集合形は、値が数百ある key（`shop` は OSM で 500 以上）を
+  1 節で引くためにある。値ごとに節を並べると、クエリが数百行になり
+  Overpass の共有インフラに対して無作法で、しかも**表に無い新しい値が
+  黙って取りこぼされる**（キー存在形なら取れて、分類器が `nil` を返し、
+  `:unclassified` として数に出る）。
+
+  `:any-of` は完全一致の集合として組む（`^(...)$` で囲う）—— 囲わないと
+  `cafe` が `cafeteria` にも当たる。生の正規表現が要るときは `{:re \"...\"}`。"
+  [prefix sel bbox]
+  (let [[k v] (if (vector? sel) sel [sel nil])
+        k (quote-escape k)]
+    (cond
+      (nil? v) (str "  " prefix "[\"" k "\"](" bbox ");")
+      (string? v) (str "  " prefix "[\"" k "\"=\"" (quote-escape v) "\"](" bbox ");")
+      (and (map? v) (seq (:any-of v)))
+      (str "  " prefix "[\"" k "\"~\"^(" (str/join "|" (map quote-escape (:any-of v))) ")$\"](" bbox ");")
+      (and (map? v) (:re v))
+      (str "  " prefix "[\"" k "\"~\"" (quote-escape (:re v)) "\"](" bbox ");")
+      :else (throw (ex-info "unsupported selector" {:selector sel})))))
+
 (defn ql
   "bbox + 選択子 → Overpass QL。`out:json` 固定、`timeout` は明示。
 
   **選択子は呼び出し側が渡す。** タクソノミーはこの repo の持ち物ではない
   （屋外広告物の媒体分類は `kotoba-lang/okugai` が正本で、そちらの
-  `okugai.medium/osm-selectors` が `[[tag value] ...]` を返す）。`:kinds` は
+  `okugai.medium/osm-selectors` が `[[tag value] ...]` を返す。事業者の
+  業種分類は `cloud-itonami/eigyo-list` の `eigyo-list.crosswalk`）。`:kinds` は
   電柱だけを引きたい呼び出し側のための短縮形。
 
-  `:ways?` を立てると way も引く —— 壁面広告や大型看板は way として
-  マッピングされることがある（node だけだと取りこぼす）。"
+  要素の範囲は 3 通り:
+
+    既定        node だけ
+    `:ways?`    node + way（壁面広告や大型看板は way のことがある）
+    `:nwr?`     node + way + relation を **1 節**で（`nwr`）
+
+  `:nwr?` が別にあるのは、`way` と `relation` を別々に並べると節数が倍に
+  なるからで、Overpass はその 3 つを `nwr` として 1 節で受ける。
+  way / relation は座標を持たないので `out center tags;` になる。"
   ([bbox] (ql bbox {}))
-  ([bbox {:keys [kinds selectors timeout ways?]
+  ([bbox {:keys [kinds selectors timeout ways? nwr?]
           :or {kinds default-kinds timeout 60}}]
    (when-not (valid-bbox? bbox)
      (throw (ex-info "invalid bbox" {:bbox bbox})))
    (let [b (bbox-str bbox)
          sels (or (seq selectors)
                   (seq (for [k kinds, sel (get pole-selectors k)] sel)))
-         clauses (concat
-                  (for [[tag v] sels] (str "  node[\"" tag "\"=\"" v "\"](" b ");"))
-                  (when ways?
-                    (for [[tag v] sels] (str "  way[\"" tag "\"=\"" v "\"](" b ");"))))]
+         prefixes (cond nwr? ["nwr"] ways? ["node" "way"] :else ["node"])
+         clauses (for [p prefixes, sel sels] (selector->clause p sel b))]
      (when (empty? clauses)
        (throw (ex-info "no selectors" {:kinds kinds :selectors selectors})))
      (str "[out:json][timeout:" timeout "];\n"
           "(\n" (str/join "\n" clauses) "\n);\n"
-          ;; way も引く場合は中心座標が要る（out center は node には無害）
-          (if ways? "out center tags;\n" "out body;\n")))))
+          ;; way / relation を引く場合は中心座標が要る（out center は node には無害）
+          (if (or ways? nwr?) "out center tags;\n" "out body;\n")))))
 
 (defn tags->kind
   "タグ map → kind。どの選択子で引かれたかではなく**タグそのもの**から
@@ -95,16 +138,21 @@
 
   `attr` は分類結果を載せるキー（既定 `:obs/kind`、okugai 経路では
   `:obs/medium`）。分類できない element と座標の無い element は `nil`。
-  way は `out center` の `center` から座標を取る。"
+  way / relation は `out center` の `center` から座標を取る。
+
+  `:types` は受け入れる element type の集合（既定 node / way / relation）。
+  relation を既定に入れているのは、除くと **黙って落ちる**（`:unclassified`
+  にも入らない type 別の落とし方だった）ため —— 落とすなら数えられる形で。"
   ([el] (element->observation el {}))
   ([{:strs [type id lat lon tags center] :as _el}
-    {:keys [classify attr] :or {classify tags->kind attr :obs/kind}}]
+    {:keys [classify attr types]
+     :or {classify tags->kind attr :obs/kind types #{"node" "way" "relation"}}}]
    (let [tags (or tags {})
          k (classify tags)
          [la lo] (cond (and (number? lat) (number? lon)) [lat lon]
                        (map? center) [(get center "lat") (get center "lon")]
                        :else [nil nil])]
-     (when (and k (number? la) (number? lo) (#{"node" "way"} type))
+     (when (and k (number? la) (number? lo) (types type))
        {:obs/source :osm
         :obs/source-id (str type "/" id)
         :obs/lat la
