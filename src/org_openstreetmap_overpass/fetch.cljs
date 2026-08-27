@@ -70,9 +70,9 @@
   （`okugai.medium/osm-selectors` と `osm-tags->medium` を渡す）。
 
      (fetch-features bbox {:selectors (medium/osm-selectors ids)
-                           :ways? true
+                           :ways? true   ; :nwr? true なら relation まで
                            :parse-opts {:classify medium/osm-tags->medium
                                         :attr :obs/medium}})"
   ([bbox] (fetch-features bbox {}))
   ([bbox opts]
-   (post-ql (core/ql bbox (select-keys opts [:selectors :kinds :timeout :ways?])) opts)))
+   (post-ql (core/ql bbox (select-keys opts [:selectors :kinds :timeout :ways? :nwr?])) opts)))
