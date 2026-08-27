@@ -60,6 +60,11 @@ OSM だから。Mapillary の画像検出（`com-mapillary-graph-api`）は acce
 `element->observation` の `:types` は既定で node / way / relation。relation を
 除いていた頃は `:unclassified` にも入らない形で落ちていた —— 落とすなら数えられる形で。
 
+`:meta? true` を足すと `out … meta` になり、`:obs/osm-version` と
+`:obs/osm-timestamp` が付く（その element が最後に触られたのはいつか）。
+**`user` / `uid` は取らない** —— 誰が編集したかは対象についての事実ではなく、
+編集者個人の情報である。
+
 送電鉄塔（`power=tower`）は電柱ではないので既定では引かない。街路灯
 （`highway=street_lamp`）は誤マッピング調査のため `:kinds` で明示した時だけ引く。
 
