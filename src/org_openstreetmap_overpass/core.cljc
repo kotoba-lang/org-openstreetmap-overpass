@@ -104,7 +104,7 @@
   なるからで、Overpass はその 3 つを `nwr` として 1 節で受ける。
   way / relation は座標を持たないので `out center tags;` になる。"
   ([bbox] (ql bbox {}))
-  ([bbox {:keys [kinds selectors timeout ways? nwr?]
+  ([bbox {:keys [kinds selectors timeout ways? nwr? meta?]
           :or {kinds default-kinds timeout 60}}]
    (when-not (valid-bbox? bbox)
      (throw (ex-info "invalid bbox" {:bbox bbox})))
@@ -118,7 +118,12 @@
      (str "[out:json][timeout:" timeout "];\n"
           "(\n" (str/join "\n" clauses) "\n);\n"
           ;; way / relation を引く場合は中心座標が要る（out center は node には無害）
-          (if (or ways? nwr?) "out center tags;\n" "out body;\n")))))
+          ;; `meta?` は version / timestamp を足す（`out … meta` は tags も含む）。
+          (cond
+            (and meta? (or ways? nwr?)) "out center meta;\n"
+            meta? "out meta;\n"
+            (or ways? nwr?) "out center tags;\n"
+            :else "out body;\n")))))
 
 (defn tags->kind
   "タグ map → kind。どの選択子で引かれたかではなく**タグそのもの**から
@@ -140,11 +145,15 @@
   `:obs/medium`）。分類できない element と座標の無い element は `nil`。
   way / relation は `out center` の `center` から座標を取る。
 
+  `out meta` で引いたときは `:obs/osm-version` と `:obs/osm-timestamp` が付く
+  （**`user` / `uid` は取らない** —— 誰が編集したかは対象の事実ではなく編集者
+  個人の情報で、この観測の用途に要らない）。
+
   `:types` は受け入れる element type の集合（既定 node / way / relation）。
   relation を既定に入れているのは、除くと **黙って落ちる**（`:unclassified`
   にも入らない type 別の落とし方だった）ため —— 落とすなら数えられる形で。"
   ([el] (element->observation el {}))
-  ([{:strs [type id lat lon tags center] :as _el}
+  ([{:strs [type id lat lon tags center version timestamp] :as _el}
     {:keys [classify attr types]
      :or {classify tags->kind attr :obs/kind types #{"node" "way" "relation"}}}]
    (let [tags (or tags {})
@@ -153,13 +162,15 @@
                        (map? center) [(get center "lat") (get center "lon")]
                        :else [nil nil])]
      (when (and k (number? la) (number? lo) (types type))
-       {:obs/source :osm
+       (cond-> {:obs/source :osm
         :obs/source-id (str type "/" id)
         :obs/lat la
         :obs/lon lo
         attr k
         :obs/tags tags
-        :obs/evidence-url (str "https://www.openstreetmap.org/" type "/" id)}))))
+        :obs/evidence-url (str "https://www.openstreetmap.org/" type "/" id)}
+         version (assoc :obs/osm-version version)
+         timestamp (assoc :obs/osm-timestamp timestamp))))))
 
 (defn parse-response
   "Overpass の JSON（keyword 化していない string キーの map）→

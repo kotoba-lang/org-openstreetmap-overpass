@@ -142,3 +142,22 @@
     (is (some? (ov/element->observation rel)))
     (testing ":types を絞れば落ちるが、それは呼び出し側の宣言"
       (is (nil? (ov/element->observation rel {:types #{"node"}}))))))
+
+;; ── meta（いつ触られたか。誰が、は取らない）─────────────────────────────
+
+(deftest meta-changes-the-out-statement
+  (is (str/includes? (ov/ql tokyo {:selectors [["shop"]] :nwr? true :meta? true}) "out center meta;"))
+  (is (str/includes? (ov/ql tokyo {:selectors [["shop"]] :meta? true}) "out meta;"))
+  (testing "既定では meta を引かない（応答が要らずに大きくなる）"
+    (is (not (str/includes? (ov/ql tokyo {:selectors [["shop"]] :nwr? true}) "meta")))))
+
+(deftest version-and-timestamp-are-carried-but-the-editor-is-not
+  (let [el {"type" "node" "id" 7 "lat" 35.68 "lon" 139.76 "version" 12
+            "timestamp" "2019-04-02T10:00:00Z" "user" "someone" "uid" 4242
+            "tags" {"power" "pole"}}
+        o (ov/element->observation el)]
+    (is (= 12 (:obs/osm-version o)))
+    (is (= "2019-04-02T10:00:00Z" (:obs/osm-timestamp o)))
+    (testing "誰が編集したかは対象の事実ではない。持ち出さない"
+      (is (not (str/includes? (pr-str o) "someone")))
+      (is (not (str/includes? (pr-str o) "4242"))))))

@@ -75,4 +75,4 @@
                                         :attr :obs/medium}})"
   ([bbox] (fetch-features bbox {}))
   ([bbox opts]
-   (post-ql (core/ql bbox (select-keys opts [:selectors :kinds :timeout :ways? :nwr?])) opts)))
+   (post-ql (core/ql bbox (select-keys opts [:selectors :kinds :timeout :ways? :nwr? :meta?])) opts)))
