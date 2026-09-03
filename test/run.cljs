@@ -1,6 +1,18 @@
 #!/usr/bin/env nbb
 ;; nbb --classpath src:test test/run.cljs
-(require '[clojure.test :as t] 'org-openstreetmap-overpass.core-test)
+;;
+;; **exit は :end-run-tests から採る。`run-tests` の戻り値からは採らない。**
+;; fetch アダプタの検査は async（Promise）なので、`run-tests` は**まだ走って
+;; いる最中に**返る。戻り値の :fail / :error を読む形は、そのとき nil を見て
+;; 0 を返す —— 実測 2026-09-03、故意に外した async assertion が exit 0 で
+;; 通り、FAIL の行すら出力に現れなかった。落ちている検査と、落ちていない検査が
+;; 同じ値を返していた。
+(require '[clojure.test :as t]
+         'org-openstreetmap-overpass.core-test
+         'org-openstreetmap-overpass.fetch-test)
 
-(let [{:keys [fail error]} (t/run-tests 'org-openstreetmap-overpass.core-test)]
-  (js/process.exit (if (pos? (+ fail error)) 1 0)))
+(defmethod t/report [:cljs.test/default :end-run-tests] [m]
+  (js/process.exit (if (t/successful? m) 0 1)))
+
+(t/run-tests 'org-openstreetmap-overpass.core-test
+             'org-openstreetmap-overpass.fetch-test)

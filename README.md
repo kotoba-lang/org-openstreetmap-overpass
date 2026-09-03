@@ -71,8 +71,25 @@ OSM だから。Mapillary の画像検出（`com-mapillary-graph-api`）は acce
 ## テスト
 
 ```bash
-nbb --classpath src:test test/run.cljs     # 8 tests / 27 assertions
+nbb --classpath src:test test/run.cljs     # 30 tests / 86 assertions
 ```
+
+`core` の検査は純関数に対する同期テスト。`fetch` の検査は **ネットワークに
+一度も出ない** —— 送信そのもの（`:fetch-fn`）と retry の待ち（`:retry-delay-ms`）を
+差し替えて、記録された呼び出しの列に対して「User-Agent を必ず送る」「間隔を
+空ける」「retry は 1 度だけ」を主張する。連打しないことの検査のために連打する
+わけにはいかないからで、既定の endpoint もテスト側で潰してある（`:fetch-fn` を
+落とす退行が入っても本番の Overpass には届かない）。
+
+`test/run.cljs` は exit を `run-tests` の戻り値ではなく **`:end-run-tests` から
+採る**。fetch 側の検査は async なので、戻り値を読む形は**まだ走っている最中に**
+返り、落ちている検査を 0 で通す（実測 2026-09-03: 故意に外した async assertion が
+exit 0 で、FAIL の行すら出力に現れなかった）。
+
+この suite が本当に噛むことは `scripts/maturity-loop`（superproject）が
+8 つの mutation で繰り返し確かめる —— User-Agent を落とす / throttle を外す /
+400 や 500 を retryable にする / 入口の option を広げる・狭める /
+retry が opts を手で並べ直す形に戻す。
 
 データは OpenStreetMap contributors 提供、ODbL。取得したデータを再配布する場合は
 出典表示とライセンス条件に従うこと。
