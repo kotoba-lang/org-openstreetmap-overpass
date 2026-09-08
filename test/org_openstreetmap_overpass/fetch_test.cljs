@@ -10,7 +10,7 @@
   送信そのもの（`:fetch-fn`）と retry の待ち（`:retry-delay-ms`）を差し替えて、
   **記録された呼び出しの列**に対して主張する。"
   (:require [clojure.test :refer [deftest is testing async]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [org-openstreetmap-overpass.core :as core]
             [org-openstreetmap-overpass.fetch :as f]))
 
