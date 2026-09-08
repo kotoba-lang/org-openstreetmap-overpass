@@ -1,6 +1,6 @@
 (ns org-openstreetmap-overpass.core-test
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [org-openstreetmap-overpass.core :as ov]))
 
 (def tokyo {:south 35.6800 :west 139.7650 :north 35.6830 :east 139.7690})
