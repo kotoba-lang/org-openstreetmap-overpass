@@ -17,7 +17,7 @@
   `operator` タグがあれば所有者が分かるが、**多くの柱には付いていない**。
   付いていないことを『所有者不明』として持ち上げるのがこの ns の仕事で、
   地域から推測して埋めることはしない。"
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def default-endpoint
   "公開エンドポイント。Overpass API 自体は overpass-api.de で運用されるが、
