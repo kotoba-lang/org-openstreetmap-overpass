@@ -1,5 +1,5 @@
-#!/usr/bin/env nbb
-;; nbb --classpath src:test test/run.cljk
+#!/usr/bin/env kbb
+;; kbb --backend sci --classpath src:test test/run.cljk
 ;;
 ;; **exit は :end-run-tests から採る。`run-tests` の戻り値からは採らない。**
 ;; fetch アダプタの検査は async（Promise）なので、`run-tests` は**まだ走って

@@ -71,7 +71,7 @@ OSM だから。Mapillary の画像検出（`com-mapillary-graph-api`）は acce
 ## テスト
 
 ```bash
-nbb --classpath src:test test/run.cljk     # 30 tests / 86 assertions
+kbb --backend sci --classpath src:test test/run.cljk     # 30 tests / 86 assertions
 ```
 
 `core` の検査は純関数に対する同期テスト。`fetch` の検査は **ネットワークに
