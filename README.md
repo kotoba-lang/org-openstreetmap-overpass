@@ -71,7 +71,7 @@ OSM だから。Mapillary の画像検出（`com-mapillary-graph-api`）は acce
 ## テスト
 
 ```bash
-nbb --classpath src:test test/run.cljs     # 30 tests / 86 assertions
+nbb --classpath src:test test/run.cljk     # 30 tests / 86 assertions
 ```
 
 `core` の検査は純関数に対する同期テスト。`fetch` の検査は **ネットワークに
@@ -81,7 +81,7 @@ nbb --classpath src:test test/run.cljs     # 30 tests / 86 assertions
 わけにはいかないからで、既定の endpoint もテスト側で潰してある（`:fetch-fn` を
 落とす退行が入っても本番の Overpass には届かない）。
 
-`test/run.cljs` は exit を `run-tests` の戻り値ではなく **`:end-run-tests` から
+`test/run.cljk` は exit を `run-tests` の戻り値ではなく **`:end-run-tests` から
 採る**。fetch 側の検査は async なので、戻り値を読む形は**まだ走っている最中に**
 返り、落ちている検査を 0 で通す（実測 2026-09-03: 故意に外した async assertion が
 exit 0 で、FAIL の行すら出力に現れなかった）。
