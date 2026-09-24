@@ -7,7 +7,7 @@
 ;; 0 を返す —— 実測 2026-09-03、故意に外した async assertion が exit 0 で
 ;; 通り、FAIL の行すら出力に現れなかった。落ちている検査と、落ちていない検査が
 ;; 同じ値を返していた。
-(require '[clojure.test :as t]
+(require '[kotoba.test :as t]
          'org-openstreetmap-overpass.core-test
          'org-openstreetmap-overpass.fetch-test)
 
