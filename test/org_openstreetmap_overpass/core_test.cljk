@@ -1,5 +1,5 @@
 (ns org-openstreetmap-overpass.core-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.lang.text :as str]
             [org-openstreetmap-overpass.core :as ov]))
 
